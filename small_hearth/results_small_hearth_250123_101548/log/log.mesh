@@ -1,0 +1,72 @@
+Meshing with ideasUnvToFoam
+/*---------------------------------------------------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  4.x                                   |
+|   \\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+Build  : 4.x-d214c8dfd5ba
+Exec   : ideasUnvToFoam /home/ht45454/CFDEM/CFDEMcoupling-24.01-4.x/tutorials/cfdemSolverMultiphaseScalar/small_hearth/CFD/constant/polyMesh/small_hearth.unv
+Date   : Jan 18 2025
+Time   : 09:50:33
+Host   : "TUE035485"
+PID    : 9019
+Case   : /home/ht45454/CFDEM/CFDEMcoupling-24.01-4.x/tutorials/cfdemSolverMultiphaseScalar/small_hearth/CFD
+nProcs : 1
+sigFpe : Enabling floating point exception trapping (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+Processing tag:164
+Starting reading units at line 3.
+l:1
+units:"  SI: Meter (newton)"
+unitType:2
+Unit factors:
+    Length scale       : 1
+    Force scale        : 1
+    Temperature scale  : 1
+    Temperature offset : 273.15
+
+
+Processing tag:2420
+Skipping tag 2420 on line 9
+Skipping section at line 9.
+
+Processing tag:2411
+Starting reading points at line 20.
+Read 11443 points.
+
+Processing tag:2412
+Starting reading cells at line 22909.
+First occurrence of element type 11 for cell 1 at line 22910
+First occurrence of element type 44 for cell 47 at line 24248
+First occurrence of element type 115 for cell 1081 at line 32080
+Read 10232 cells and 3916 boundary faces.
+
+Processing tag:2467
+Starting reading patches at line 52546.
+For group 1 named outlet trying to read 4 patch face indices.
+For group 2 named inlet trying to read 128 patch face indices.
+For group 3 named atmosphere trying to read 384 patch face indices.
+For group 5 named walls trying to read 1804 patch face indices.
+
+Of 3916 so-called boundary faces 1596 belong to two cells and are therefore internal
+Sorting boundary faces according to group (patch)
+0: outlet is patch
+1: inlet is patch
+2: atmosphere is patch
+3: walls is patch
+
+Constructing mesh with non-default patches of size:
+    outlet	4
+    inlet	128
+    atmosphere	384
+    walls	1804
+
+End
+

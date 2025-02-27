@@ -1,0 +1,612 @@
+thermo_log      ../log/thermo.txt
+
+atom_style      granular
+atom_modify     map array
+boundary        f f f
+newton          off
+
+communicate     single vel yes
+
+units           si
+processors      2 2 2
+
+# read the restart file
+read_restart    ../DEM/post/restart/liggghts.restartSequence
+  orthogonal box = (-0.5 -0.5 -0.0025) to (0.5 0.5 1)
+  2 by 2 by 2 MPI processor grid
+  80888 atoms
+
+neighbor        0.007 bin
+neigh_modify    delay 0
+
+# contact model
+include         ../DEM/in.contact_settings
+# Material properties required for granular pair styles
+fix             m1 all property/global youngsModulus	                peratomtype       5.e6
+fix             m2 all property/global poissonsRatio 	                peratomtype	  0.3
+fix             m3 all property/global coefficientRestitution           peratomtypepair 1 0.3
+fix             m4 all property/global coefficientFriction 	        peratomtypepair 1 0.5
+fix             m5 all property/global coefficientRollingFriction       peratomtypepair 1 0.2
+fix             m6 all property/global coefficientRollingViscousDamping peratomtypepair 1 0.3
+
+# pair style
+pair_style	gran model hertz tangential history rolling_friction epsd
+pair_coeff  	* *
+
+# hearth settings
+include         ../DEM/in.hearth_settings
+# hearth settings
+variable        hearthRadius  equal 0.5     # hearth radius (m)
+variable        coreRadius    equal 0.15    # radius of core region (m)
+variable        liquidLevel   equal 0.4     # initial liquid level (m) [set in setFieldsDict as well!]
+variable        liquidDensity equal 6700.   # liquid density (kg/m3)
+
+# heat/mass transfer settings
+variable        particlekInit equal 5000    # particle thermal conductivity during init (W/Km)
+variable        particlekRun  equal 40.0    # particle thermal conductivity during run  (W/Km) [sped up! 2.0*20!]
+variable        particleCp    equal 870     # particle heat capacity (J/kgK)
+variable        Tinlet        equal 1823.15 # particle inlet temperature (K) [set in CFD as well!]
+variable        Tinit         equal 1623.15 # initial temperature (K) [set in CFD as well!]
+variable        Twall         equal 1423.15 # wall temperature (K) [set in CFD as well!]
+variable        rRemove       equal 0.001   # radius at which dissolved particles are removed (m)
+
+# zone definitions
+variable        forceZmin     equal 0.70    # lower boundary of force zone (m)
+variable        forceZmax     equal 0.80    # upper boundary of force zone (m)
+variable        insZmin       equal 0.70    # lower boundary of insertion zone (m)
+variable        insZmax       equal 0.80    # upper boundary of insertion zone (m)
+
+region          bedReg        cylinder z 0 0 ${hearthRadius} 0            ${insZmax}
+region          bedReg        cylinder z 0 0 0.5 0            ${insZmax}
+region          bedReg        cylinder z 0 0 0.5 0            0.8
+region          coreReg       cylinder z 0 0 ${coreRadius}   0            ${insZmax} side in
+region          coreReg       cylinder z 0 0 0.15   0            ${insZmax} side in
+region          coreReg       cylinder z 0 0 0.15   0            0.8 side in
+region          invCoreReg    cylinder z 0 0 ${coreRadius}   0            ${insZmax} side out
+region          invCoreReg    cylinder z 0 0 0.15   0            ${insZmax} side out
+region          invCoreReg    cylinder z 0 0 0.15   0            0.8 side out
+region          shellReg      intersect 2 bedReg invCoreReg
+
+region		insReg        cylinder z 0 0 ${hearthRadius} ${insZmin}   ${insZmax}
+region		insReg        cylinder z 0 0 0.5 ${insZmin}   ${insZmax}
+region		insReg        cylinder z 0 0 0.5 0.7   ${insZmax}
+region		insReg        cylinder z 0 0 0.5 0.7   0.8
+region          insCoreReg    intersect 2 insReg coreReg
+region          insShellReg   intersect 2 insReg invCoreReg
+
+region		forceReg      cylinder z 0 0 ${hearthRadius} ${forceZmin} ${forceZmax}
+region		forceReg      cylinder z 0 0 0.5 ${forceZmin} ${forceZmax}
+region		forceReg      cylinder z 0 0 0.5 0.7 ${forceZmax}
+region		forceReg      cylinder z 0 0 0.5 0.7 0.8
+region          freeboard     cylinder z 0 0 ${hearthRadius} ${insZmax} INF
+region          freeboard     cylinder z 0 0 0.5 ${insZmax} INF
+region          freeboard     cylinder z 0 0 0.5 0.8 INF
+
+region          mushroom      block 0.4 0.5 -0.05 0.05 0.2 0.3 side out # mushroom cutout
+region          initReg       intersect 2 bedReg mushroom # entire bed minus mushroom
+region          initCoreReg   intersect 2 initReg coreReg
+region          initShellReg  intersect 2 initReg invCoreReg
+
+# total burden weight
+variable        pressureMin   equal 2000    # lower pressure value (Pa), near wall
+variable        pressureMax   equal 20000   # upper pressure value (Pa), near core
+
+# kinetic energy
+variable        kinEn         equal ke      # kinetic energy (J)
+variable        kinEnMax      equal 2.      # kinetic energy threshold for init (J)
+
+# coke removal settings
+variable        cokeRateInit  equal 20.     # coke combustion rate during init (kg/s)
+variable        cokeRateRun   equal 1.      # coke combustion rate during run (kg/s)
+variable        delInt        equal 0.1     # removal interval (s) [set in liggghtsCommands as well!]
+
+variable        nFreeboard    equal count(all,freeboard)
+
+variable        nRaceways     equal count(all,raceways)
+variable        mRaceways     equal mass(all,raceways)
+variable        avMass        equal "v_mRaceways/(v_nRaceways+1e-3)"
+
+variable        delIntSteps   equal "floor(v_delInt/dt)"
+
+variable        nDelInit      equal "v_delIntSteps*dt*v_cokeRateInit/v_avMass"
+variable        fDelInit      equal "v_nDelInit/(v_nRaceways+1e-3)"
+
+variable        nDelRun       equal "v_delIntSteps*dt*v_cokeRateRun/(v_avMass+1e-3)"
+variable        fDelRun       equal "v_nDelRun/(v_nRaceways+1e-3)"
+
+
+
+
+# timestep
+timestep        1e-4
+
+# cfd coupling
+fix             cfd all couple/cfd couple_every 100 mpi
+nevery as specified in LIGGGHTS is overriden by calling external program (/home/ht45454/CFDEM/LIGGGHTS/src/cfd_datacoupling_mpi.cpp:56)
+fix             cfd2 all couple/cfd/force/implicit
+
+# heat transfer
+fix             m7 all property/global thermalConductivity peratomtype ${particlekRun} # lambda in [W/(K*m)]
+fix             m7 all property/global thermalConductivity peratomtype 40 
+fix             m8 all property/global thermalCapacity     peratomtype ${particleCp}   # cp in [J/(kg*K)]
+fix             m8 all property/global thermalCapacity     peratomtype 870   
+fix             heattransfer all heat/gran/conduction initial_temperature ${Tinlet}
+fix             heattransfer all heat/gran/conduction initial_temperature 1823.15
+Resetting global state of Fix Temp Style property/atom from restart file info
+Resetting per-atom state of Fix Temp Style property/atom from restart file info
+Resetting global state of Fix heatFlux Style property/atom from restart file info
+Resetting per-atom state of Fix heatFlux Style property/atom from restart file info
+Resetting global state of Fix heatSource Style property/atom from restart file info
+Resetting per-atom state of Fix heatSource Style property/atom from restart file info
+fix             cfd3 all couple/cfd/convection T0 ${Tinlet}
+fix             cfd3 all couple/cfd/convection T0 1823.15
+
+# mass transfer
+fix             cfd4 all couple/cfd/dissolve rmin ${rRemove}
+fix             cfd4 all couple/cfd/dissolve rmin 0.001
+
+# walls
+include         ../DEM/in.wall_settings
+fix		sides     all mesh/surface file ../DEM/mesh/small_hearth_sides.stl       type 1 temperature ${Twall} curvature 1e-5
+fix		sides     all mesh/surface file ../DEM/mesh/small_hearth_sides.stl       type 1 temperature 1423.15 curvature 1e-5
+Resetting global state of Fix sides Style mesh/surface from restart file info
+fix 		bottom    all mesh/surface file ../DEM/mesh/small_hearth_bottom.stl      type 1 temperature ${Twall}
+fix 		bottom    all mesh/surface file ../DEM/mesh/small_hearth_bottom.stl      type 1 temperature 1423.15
+Resetting global state of Fix bottom Style mesh/surface from restart file info
+fix		granwalls all wall/gran model hertz tangential history rolling_friction epsd mesh n_meshes 2 meshes sides bottom temperature ${Twall}
+fix		granwalls all wall/gran model hertz tangential history rolling_friction epsd mesh n_meshes 2 meshes sides bottom temperature 1423.15
+Resetting global state of Fix n_neighs_mesh_sides Style property/atom from restart file info
+Resetting per-atom state of Fix n_neighs_mesh_sides Style property/atom from restart file info
+Resetting global state of Fix tracker_sides Style contacthistory/mesh from restart file info
+Resetting per-atom state of Fix tracker_sides Style contacthistory/mesh from restart file info
+Resetting global state of Fix n_neighs_mesh_bottom Style property/atom from restart file info
+Resetting per-atom state of Fix n_neighs_mesh_bottom Style property/atom from restart file info
+Resetting global state of Fix tracker_bottom Style contacthistory/mesh from restart file info
+Resetting per-atom state of Fix tracker_bottom Style contacthistory/mesh from restart file info
+
+# gravity
+fix		gravi all gravity 9.81 vector 0.0 0.0 -1.0
+
+######################################
+
+# particle distribution
+include	   	../DEM/in.particleSizeDistribution1
+# Particle size distribution for LIGGGHTS
+
+# mean radius = 0.0100000 m
+# standard deviation = 0.00000 m
+# density = 900 kg/m3
+
+fix	pts1 all particletemplate/sphere 10007 atom_type 1 density constant 900 radius constant 0.01
+Resetting global state of Fix pts1 Style particletemplate/sphere from restart file info
+
+fix	pdd1 all particledistribution/discrete 10009 1 pts1 1.000000
+Resetting global state of Fix pdd1 Style particledistribution/discrete from restart file info
+include	   	../DEM/in.particleSizeDistribution2
+# Particle size distribution for LIGGGHTS
+
+# mean radius = 0.0125000 m
+# standard deviation = 0.00000 m
+# density = 900 kg/m3
+
+fix	pts2 all particletemplate/sphere 10037 atom_type 1 density constant 900 radius constant 0.0125
+Resetting global state of Fix pts2 Style particletemplate/sphere from restart file info
+
+fix	pdd2 all particledistribution/discrete 10039 1 pts2 1.000000
+Resetting global state of Fix pdd2 Style particledistribution/discrete from restart file info
+
+# raceways
+include		../DEM/in.raceways
+# Raceway definition for LIGGGHTS
+
+# reactor radius = 0.500000 m
+# raceway height = 0.500000 m
+# raceway diameter = 0.100000 m
+# raceway length = 0.100000 m
+# number of raceways = 8
+
+variable angle1 equal 0.000000
+region raceway1 cylinder x 0.000000 0.500000 0.050000 0.400000 0.500000 rotate v_angle1 0 0 0 0 0 1
+variable angle2 equal 0.785398
+region raceway2 cylinder x 0.000000 0.500000 0.050000 0.400000 0.500000 rotate v_angle2 0 0 0 0 0 1
+variable angle3 equal 1.570796
+region raceway3 cylinder x 0.000000 0.500000 0.050000 0.400000 0.500000 rotate v_angle3 0 0 0 0 0 1
+variable angle4 equal 2.356194
+region raceway4 cylinder x 0.000000 0.500000 0.050000 0.400000 0.500000 rotate v_angle4 0 0 0 0 0 1
+variable angle5 equal 3.141593
+region raceway5 cylinder x 0.000000 0.500000 0.050000 0.400000 0.500000 rotate v_angle5 0 0 0 0 0 1
+variable angle6 equal 3.926991
+region raceway6 cylinder x 0.000000 0.500000 0.050000 0.400000 0.500000 rotate v_angle6 0 0 0 0 0 1
+variable angle7 equal 4.712389
+region raceway7 cylinder x 0.000000 0.500000 0.050000 0.400000 0.500000 rotate v_angle7 0 0 0 0 0 1
+variable angle8 equal 5.497787
+region raceway8 cylinder x 0.000000 0.500000 0.050000 0.400000 0.500000 rotate v_angle8 0 0 0 0 0 1
+
+region raceways union 8 raceway1 raceway2 raceway3 raceway4 raceway5 raceway6 raceway7 raceway8
+
+# burden weight
+include         ../DEM/in.pressure_profile
+# Pressure profile definition for LIGGGHTS
+
+# reactor radius = 0.500000 m
+# R1 = 0.150000 m
+# R2 = 0.400000 m
+# number of bins = 12
+
+# Region01
+region   forceReg01		 cylinder z 0 0 0.15	${forceZmin} ${forceZmax} side in  	# center region
+region   forceReg01		 cylinder z 0 0 0.15	0.7 ${forceZmax} side in  	
+region   forceReg01		 cylinder z 0 0 0.15	0.7 0.8 side in  	
+variable nForceReg01	 equal count(all,forceReg01) 								# number of particles inside
+variable forceRegArea01	 equal 0.070686												# ring area (m2)
+variable forceFact01	 equal 1												# force factor [0-1] (-)
+variable totalForce01	 equal "-(v_forceFact01*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea01"	# total force (N)
+variable forcePerPart01	 equal "v_totalForce01/(v_nForceReg01+1e-3)"				# force per particle (N)
+fix      force01		 all addforce 0 0 v_forcePerPart01 region forceReg01		# apply force
+
+# Region02
+region   forceRegIn02	 cylinder z 0 0 0.15	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn02	 cylinder z 0 0 0.15	0.7 ${forceZmax} side out 	
+region   forceRegIn02	 cylinder z 0 0 0.15	0.7 0.8 side out 	
+region   forceRegOut02	 cylinder z 0 0 0.17083	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut02	 cylinder z 0 0 0.17083	0.7 ${forceZmax} side in  	
+region   forceRegOut02	 cylinder z 0 0 0.17083	0.7 0.8 side in  	
+region   forceReg02		 intersect 2 forceRegIn02 forceRegOut02						# annular region
+variable nForceReg02	 equal count(all,forceReg02) 								# number of particles inside
+variable forceRegArea02	 equal 0.020998												# ring area (m2)
+variable forceFact02	 equal 0.95833												# force factor [0-1] (-)
+variable totalForce02	 equal "-(v_forceFact02*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea02"	# total force (N)
+variable forcePerPart02	 equal "v_totalForce02/(v_nForceReg02+1e-3)"				# force per particle (N)
+fix      force02		 all addforce 0 0 v_forcePerPart02 region forceReg02		# apply force
+
+# Region03
+region   forceRegIn03	 cylinder z 0 0 0.17083	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn03	 cylinder z 0 0 0.17083	0.7 ${forceZmax} side out 	
+region   forceRegIn03	 cylinder z 0 0 0.17083	0.7 0.8 side out 	
+region   forceRegOut03	 cylinder z 0 0 0.19167	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut03	 cylinder z 0 0 0.19167	0.7 ${forceZmax} side in  	
+region   forceRegOut03	 cylinder z 0 0 0.19167	0.7 0.8 side in  	
+region   forceReg03		 intersect 2 forceRegIn03 forceRegOut03						# annular region
+variable nForceReg03	 equal count(all,forceReg03) 								# number of particles inside
+variable forceRegArea03	 equal 0.023726												# ring area (m2)
+variable forceFact03	 equal 0.875												# force factor [0-1] (-)
+variable totalForce03	 equal "-(v_forceFact03*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea03"	# total force (N)
+variable forcePerPart03	 equal "v_totalForce03/(v_nForceReg03+1e-3)"				# force per particle (N)
+fix      force03		 all addforce 0 0 v_forcePerPart03 region forceReg03		# apply force
+
+# Region04
+region   forceRegIn04	 cylinder z 0 0 0.19167	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn04	 cylinder z 0 0 0.19167	0.7 ${forceZmax} side out 	
+region   forceRegIn04	 cylinder z 0 0 0.19167	0.7 0.8 side out 	
+region   forceRegOut04	 cylinder z 0 0 0.2125	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut04	 cylinder z 0 0 0.2125	0.7 ${forceZmax} side in  	
+region   forceRegOut04	 cylinder z 0 0 0.2125	0.7 0.8 side in  	
+region   forceReg04		 intersect 2 forceRegIn04 forceRegOut04						# annular region
+variable nForceReg04	 equal count(all,forceReg04) 								# number of particles inside
+variable forceRegArea04	 equal 0.026453												# ring area (m2)
+variable forceFact04	 equal 0.79167												# force factor [0-1] (-)
+variable totalForce04	 equal "-(v_forceFact04*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea04"	# total force (N)
+variable forcePerPart04	 equal "v_totalForce04/(v_nForceReg04+1e-3)"				# force per particle (N)
+fix      force04		 all addforce 0 0 v_forcePerPart04 region forceReg04		# apply force
+
+# Region05
+region   forceRegIn05	 cylinder z 0 0 0.2125	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn05	 cylinder z 0 0 0.2125	0.7 ${forceZmax} side out 	
+region   forceRegIn05	 cylinder z 0 0 0.2125	0.7 0.8 side out 	
+region   forceRegOut05	 cylinder z 0 0 0.23333	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut05	 cylinder z 0 0 0.23333	0.7 ${forceZmax} side in  	
+region   forceRegOut05	 cylinder z 0 0 0.23333	0.7 0.8 side in  	
+region   forceReg05		 intersect 2 forceRegIn05 forceRegOut05						# annular region
+variable nForceReg05	 equal count(all,forceReg05) 								# number of particles inside
+variable forceRegArea05	 equal 0.02918												# ring area (m2)
+variable forceFact05	 equal 0.70833												# force factor [0-1] (-)
+variable totalForce05	 equal "-(v_forceFact05*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea05"	# total force (N)
+variable forcePerPart05	 equal "v_totalForce05/(v_nForceReg05+1e-3)"				# force per particle (N)
+fix      force05		 all addforce 0 0 v_forcePerPart05 region forceReg05		# apply force
+
+# Region06
+region   forceRegIn06	 cylinder z 0 0 0.23333	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn06	 cylinder z 0 0 0.23333	0.7 ${forceZmax} side out 	
+region   forceRegIn06	 cylinder z 0 0 0.23333	0.7 0.8 side out 	
+region   forceRegOut06	 cylinder z 0 0 0.25417	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut06	 cylinder z 0 0 0.25417	0.7 ${forceZmax} side in  	
+region   forceRegOut06	 cylinder z 0 0 0.25417	0.7 0.8 side in  	
+region   forceReg06		 intersect 2 forceRegIn06 forceRegOut06						# annular region
+variable nForceReg06	 equal count(all,forceReg06) 								# number of particles inside
+variable forceRegArea06	 equal 0.031907												# ring area (m2)
+variable forceFact06	 equal 0.625												# force factor [0-1] (-)
+variable totalForce06	 equal "-(v_forceFact06*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea06"	# total force (N)
+variable forcePerPart06	 equal "v_totalForce06/(v_nForceReg06+1e-3)"				# force per particle (N)
+fix      force06		 all addforce 0 0 v_forcePerPart06 region forceReg06		# apply force
+
+# Region07
+region   forceRegIn07	 cylinder z 0 0 0.25417	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn07	 cylinder z 0 0 0.25417	0.7 ${forceZmax} side out 	
+region   forceRegIn07	 cylinder z 0 0 0.25417	0.7 0.8 side out 	
+region   forceRegOut07	 cylinder z 0 0 0.275	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut07	 cylinder z 0 0 0.275	0.7 ${forceZmax} side in  	
+region   forceRegOut07	 cylinder z 0 0 0.275	0.7 0.8 side in  	
+region   forceReg07		 intersect 2 forceRegIn07 forceRegOut07						# annular region
+variable nForceReg07	 equal count(all,forceReg07) 								# number of particles inside
+variable forceRegArea07	 equal 0.034634												# ring area (m2)
+variable forceFact07	 equal 0.54167												# force factor [0-1] (-)
+variable totalForce07	 equal "-(v_forceFact07*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea07"	# total force (N)
+variable forcePerPart07	 equal "v_totalForce07/(v_nForceReg07+1e-3)"				# force per particle (N)
+fix      force07		 all addforce 0 0 v_forcePerPart07 region forceReg07		# apply force
+
+# Region08
+region   forceRegIn08	 cylinder z 0 0 0.275	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn08	 cylinder z 0 0 0.275	0.7 ${forceZmax} side out 	
+region   forceRegIn08	 cylinder z 0 0 0.275	0.7 0.8 side out 	
+region   forceRegOut08	 cylinder z 0 0 0.29583	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut08	 cylinder z 0 0 0.29583	0.7 ${forceZmax} side in  	
+region   forceRegOut08	 cylinder z 0 0 0.29583	0.7 0.8 side in  	
+region   forceReg08		 intersect 2 forceRegIn08 forceRegOut08						# annular region
+variable nForceReg08	 equal count(all,forceReg08) 								# number of particles inside
+variable forceRegArea08	 equal 0.037361												# ring area (m2)
+variable forceFact08	 equal 0.45833												# force factor [0-1] (-)
+variable totalForce08	 equal "-(v_forceFact08*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea08"	# total force (N)
+variable forcePerPart08	 equal "v_totalForce08/(v_nForceReg08+1e-3)"				# force per particle (N)
+fix      force08		 all addforce 0 0 v_forcePerPart08 region forceReg08		# apply force
+
+# Region09
+region   forceRegIn09	 cylinder z 0 0 0.29583	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn09	 cylinder z 0 0 0.29583	0.7 ${forceZmax} side out 	
+region   forceRegIn09	 cylinder z 0 0 0.29583	0.7 0.8 side out 	
+region   forceRegOut09	 cylinder z 0 0 0.31667	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut09	 cylinder z 0 0 0.31667	0.7 ${forceZmax} side in  	
+region   forceRegOut09	 cylinder z 0 0 0.31667	0.7 0.8 side in  	
+region   forceReg09		 intersect 2 forceRegIn09 forceRegOut09						# annular region
+variable nForceReg09	 equal count(all,forceReg09) 								# number of particles inside
+variable forceRegArea09	 equal 0.040088												# ring area (m2)
+variable forceFact09	 equal 0.375												# force factor [0-1] (-)
+variable totalForce09	 equal "-(v_forceFact09*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea09"	# total force (N)
+variable forcePerPart09	 equal "v_totalForce09/(v_nForceReg09+1e-3)"				# force per particle (N)
+fix      force09		 all addforce 0 0 v_forcePerPart09 region forceReg09		# apply force
+
+# Region10
+region   forceRegIn10	 cylinder z 0 0 0.31667	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn10	 cylinder z 0 0 0.31667	0.7 ${forceZmax} side out 	
+region   forceRegIn10	 cylinder z 0 0 0.31667	0.7 0.8 side out 	
+region   forceRegOut10	 cylinder z 0 0 0.3375	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut10	 cylinder z 0 0 0.3375	0.7 ${forceZmax} side in  	
+region   forceRegOut10	 cylinder z 0 0 0.3375	0.7 0.8 side in  	
+region   forceReg10		 intersect 2 forceRegIn10 forceRegOut10						# annular region
+variable nForceReg10	 equal count(all,forceReg10) 								# number of particles inside
+variable forceRegArea10	 equal 0.042815												# ring area (m2)
+variable forceFact10	 equal 0.29167												# force factor [0-1] (-)
+variable totalForce10	 equal "-(v_forceFact10*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea10"	# total force (N)
+variable forcePerPart10	 equal "v_totalForce10/(v_nForceReg10+1e-3)"				# force per particle (N)
+fix      force10		 all addforce 0 0 v_forcePerPart10 region forceReg10		# apply force
+
+# Region11
+region   forceRegIn11	 cylinder z 0 0 0.3375	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn11	 cylinder z 0 0 0.3375	0.7 ${forceZmax} side out 	
+region   forceRegIn11	 cylinder z 0 0 0.3375	0.7 0.8 side out 	
+region   forceRegOut11	 cylinder z 0 0 0.35833	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut11	 cylinder z 0 0 0.35833	0.7 ${forceZmax} side in  	
+region   forceRegOut11	 cylinder z 0 0 0.35833	0.7 0.8 side in  	
+region   forceReg11		 intersect 2 forceRegIn11 forceRegOut11						# annular region
+variable nForceReg11	 equal count(all,forceReg11) 								# number of particles inside
+variable forceRegArea11	 equal 0.045542												# ring area (m2)
+variable forceFact11	 equal 0.20833												# force factor [0-1] (-)
+variable totalForce11	 equal "-(v_forceFact11*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea11"	# total force (N)
+variable forcePerPart11	 equal "v_totalForce11/(v_nForceReg11+1e-3)"				# force per particle (N)
+fix      force11		 all addforce 0 0 v_forcePerPart11 region forceReg11		# apply force
+
+# Region12
+region   forceRegIn12	 cylinder z 0 0 0.35833	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn12	 cylinder z 0 0 0.35833	0.7 ${forceZmax} side out 	
+region   forceRegIn12	 cylinder z 0 0 0.35833	0.7 0.8 side out 	
+region   forceRegOut12	 cylinder z 0 0 0.37917	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut12	 cylinder z 0 0 0.37917	0.7 ${forceZmax} side in  	
+region   forceRegOut12	 cylinder z 0 0 0.37917	0.7 0.8 side in  	
+region   forceReg12		 intersect 2 forceRegIn12 forceRegOut12						# annular region
+variable nForceReg12	 equal count(all,forceReg12) 								# number of particles inside
+variable forceRegArea12	 equal 0.048269												# ring area (m2)
+variable forceFact12	 equal 0.125												# force factor [0-1] (-)
+variable totalForce12	 equal "-(v_forceFact12*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea12"	# total force (N)
+variable forcePerPart12	 equal "v_totalForce12/(v_nForceReg12+1e-3)"				# force per particle (N)
+fix      force12		 all addforce 0 0 v_forcePerPart12 region forceReg12		# apply force
+
+# Region13
+region   forceRegIn13	 cylinder z 0 0 0.37917	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn13	 cylinder z 0 0 0.37917	0.7 ${forceZmax} side out 	
+region   forceRegIn13	 cylinder z 0 0 0.37917	0.7 0.8 side out 	
+region   forceRegOut13	 cylinder z 0 0 0.4	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut13	 cylinder z 0 0 0.4	0.7 ${forceZmax} side in  	
+region   forceRegOut13	 cylinder z 0 0 0.4	0.7 0.8 side in  	
+region   forceReg13		 intersect 2 forceRegIn13 forceRegOut13						# annular region
+variable nForceReg13	 equal count(all,forceReg13) 								# number of particles inside
+variable forceRegArea13	 equal 0.050996												# ring area (m2)
+variable forceFact13	 equal 0.041667												# force factor [0-1] (-)
+variable totalForce13	 equal "-(v_forceFact13*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea13"	# total force (N)
+variable forcePerPart13	 equal "v_totalForce13/(v_nForceReg13+1e-3)"				# force per particle (N)
+fix      force13		 all addforce 0 0 v_forcePerPart13 region forceReg13		# apply force
+
+# Region14
+region   forceRegIn14	 cylinder z 0 0 0.4	${forceZmin} ${forceZmax} side out 	# inner region
+region   forceRegIn14	 cylinder z 0 0 0.4	0.7 ${forceZmax} side out 	
+region   forceRegIn14	 cylinder z 0 0 0.4	0.7 0.8 side out 	
+region   forceRegOut14	 cylinder z 0 0 0.5	${forceZmin} ${forceZmax} side in  	# outer region
+region   forceRegOut14	 cylinder z 0 0 0.5	0.7 ${forceZmax} side in  	
+region   forceRegOut14	 cylinder z 0 0 0.5	0.7 0.8 side in  	
+region   forceReg14		 intersect 2 forceRegIn14 forceRegOut14						# annular region
+variable nForceReg14	 equal count(all,forceReg14) 								# number of particles inside
+variable forceRegArea14	 equal 0.28274												# ring area (m2)
+variable forceFact14	 equal 0												# force factor [0-1] (-)
+variable totalForce14	 equal "-(v_forceFact14*(v_pressureMax-v_pressureMin)+v_pressureMin)*v_forceRegArea14"	# total force (N)
+variable forcePerPart14	 equal "v_totalForce14/(v_nForceReg14+1e-3)"				# force per particle (N)
+fix      force14		 all addforce 0 0 v_forcePerPart14 region forceReg14		# apply force
+
+variable totalForce		 equal "v_forcePerPart01*v_nForceReg01+v_forcePerPart02*v_nForceReg02+v_forcePerPart03*v_nForceReg03+v_forcePerPart04*v_nForceReg04+v_forcePerPart05*v_nForceReg05+v_forcePerPart06*v_nForceReg06+v_forcePerPart07*v_nForceReg07+v_forcePerPart08*v_nForceReg08+v_forcePerPart09*v_nForceReg09+v_forcePerPart10*v_nForceReg10+v_forcePerPart11*v_nForceReg11+v_forcePerPart12*v_nForceReg12+v_forcePerPart13*v_nForceReg13+v_forcePerPart14*v_nForceReg14" 	# sum of all forces (N)
+variable nForceReg		 equal "v_nForceReg01+v_nForceReg02+v_nForceReg03+v_nForceReg04+v_nForceReg05+v_nForceReg06+v_nForceReg07+v_nForceReg08+v_nForceReg09+v_nForceReg10+v_nForceReg11+v_nForceReg12+v_nForceReg13+v_nForceReg14" 	# sum of all numbers of particles (N)
+variable avForcePerPart	 equal "v_totalForce/(v_nForceReg+1e-3)"	# average force per particle (N)
+
+# insert in insertion volume
+fix         	ins3 all insert/pack seed 32452843 distributiontemplate pdd1 all_in yes insert_every ${delIntSteps} overlapcheck yes region insShellReg volumefraction_region 0.7
+fix         	ins3 all insert/pack seed 32452843 distributiontemplate pdd1 all_in yes insert_every 1000 overlapcheck yes region insShellReg volumefraction_region 0.7
+Resetting global state of Fix ins3 Style insert/pack from restart file info
+fix         	ins4 all insert/pack seed 32452843 distributiontemplate pdd2 all_in yes insert_every ${delIntSteps} overlapcheck yes region insCoreReg  volumefraction_region 0.7
+fix         	ins4 all insert/pack seed 32452843 distributiontemplate pdd2 all_in yes insert_every 1000 overlapcheck yes region insCoreReg  volumefraction_region 0.7
+Resetting global state of Fix ins4 Style insert/pack from restart file info
+
+######################################
+
+# apply nve integration to all particles
+fix             integr all nve/sphere
+
+# output settings
+thermo_style    custom step time atoms ke v_totalForce v_avForcePerPart v_nDelRun
+thermo          10
+
+# dump settings
+dump            dmp all custom 5000 ../DEM/post/dump*.liggghts_run id type x y z ix iy iz vx vy vz fx fy fz omegax omegay omegaz radius density f_Temp[0] f_convectiveHeatFlux[0] f_convectiveMassFlux[0]
+#5000
+run             0
+Resetting global state of Fix contacthistory Style contacthistory from restart file info
+Resetting per-atom state of Fix contacthistory Style contacthistory from restart file info
+INFO: Particle insertion ins3: inserting every 1000 steps
+INFO: Particle insertion ins4: inserting every 1000 steps
+Memory usage per processor = 24.93 Mbytes
+Step Time Atoms KinEng totalFor avForceP nDelRun 
+  107001            0    80888  0.084448594   -6145.8938   -0.6678141          100 
+Loop time of 3.14425e-06 on 8 procs for 0 steps with 80888 atoms
+Max time of 3.384e-06 on 8 procs for 0 steps with 80888 atoms
+
+Pair  time (%) = 0 (0)
+Max Pair time (ib) = 0 (0)
+Neigh time (%) = 0 (0)
+Max Neigh time (ib) = 0 (0)
+Comm  time (%) = 0 (0)
+Max Comm time (ib) = 0 (0)
+Outpt time (%) = 0 (0)
+Max Outpt time (ib) = 0 (0)
+Other time (%) = 3.14425e-06 (100)
+Max Other time (ib) = 3.384e-06 (7.62503)
+
+Nlocal:    10111 ave 12700 max 7448 min
+Histogram: 4 0 0 0 0 0 0 0 0 4
+Nghost:    2253.75 ave 2657 max 1844 min
+Histogram: 2 2 0 0 0 0 0 0 2 2
+Neighs:    57335.1 ave 71932 max 42273 min
+Histogram: 4 0 0 0 0 0 0 0 0 4
+
+Total # of neighbors = 458681
+Ave neighs/atom = 5.67057
+Neighbor list builds = 0
+Dangerous builds = 0
+
+delete_atoms porosity raceways ${fDelRun} 123457 compress no 
+delete_atoms porosity raceways 100000 123457 compress no 
+Deleted 0 atoms, new total = 80888
+delete_atoms region freeboard compress no 
+Deleted 0 atoms, new total = 80888
+set region raceways property/atom Temp ${Tinlet}
+set region raceways property/atom Temp 1823.15
+  0 settings made for property/atom
+run 5    
+Memory usage per processor = 24.9304 Mbytes
+Step Time Atoms KinEng totalFor avForceP nDelRun 
+  107001            0    80888  0.084448594   -6145.8938   -0.6678141          100 
+INFO: Particle insertion ins3: inserted 63 particle templates (mass 0.237504) at step 107002
+ - a total of 6239 particle templates (mass 23.520476) inserted so far.
+WARNING: Particle insertion: Less insertions than requested (/home/ht45454/CFDEM/LIGGGHTS/src/fix_insert.cpp:814)
+INFO: Particle insertion ins4: inserted 1 particle templates (mass 0.007363) at step 107002
+ - a total of 289 particle templates (mass 2.127938) inserted so far.
+WARNING: Particle insertion: Less insertions than requested (/home/ht45454/CFDEM/LIGGGHTS/src/fix_insert.cpp:814)
+  107006       0.0005    80952    0.1909491   -6145.8939  -0.66313048    20.981317 
+Loop time of 0.219344 on 8 procs for 5 steps with 80952 atoms
+Max time of 0.219346 on 8 procs for 5 steps with 80952 atoms
+
+Pair  time (%) = 0.0126767 (5.77937)
+Max Pair time (ib) = 0.0211822 (67.0955)
+Neigh time (%) = 0.00998402 (4.55176)
+Max Neigh time (ib) = 0.0131147 (31.357)
+Comm  time (%) = 0.00945628 (4.31116)
+Max Comm time (ib) = 0.0154409 (63.2878)
+Outpt time (%) = 0.0141038 (6.42997)
+Max Outpt time (ib) = 0.0141374 (0.238122)
+Other time (%) = 0.173124 (78.9277)
+Max Other time (ib) = 0.17542 (1.32666)
+
+Nlocal:    10119 ave 12700 max 7475 min
+Histogram: 4 0 0 0 0 0 0 0 0 4
+Nghost:    2255.62 ave 2657 max 1849 min
+Histogram: 2 2 0 0 0 0 0 0 2 2
+Neighs:    57372.9 ave 71932 max 42411 min
+Histogram: 4 0 0 0 0 0 0 0 0 4
+
+Total # of neighbors = 458983
+Ave neighs/atom = 5.66982
+Neighbor list builds = 1
+Dangerous builds = 0
+delete_atoms region freeboard compress no 
+Deleted 0 atoms, new total = 80952
+set region raceways property/atom Temp ${Tinlet}
+set region raceways property/atom Temp 1823.15
+  1 settings made for property/atom
+run 5 pre no post no
+Step Time Atoms KinEng totalFor avForceP nDelRun 
+  107006       0.0005    80952    0.1909491   -6145.8939  -0.66313048    20.981317 
+  107010       0.0009    80952   0.50103593   -6145.8939  -0.66313048    20.973362 
+  107011        0.001    80952    0.6461879   -6145.8939  -0.66320204    20.973444 
+Loop time of 0.108607 on 8 procs for 5 steps with 80952 atoms
+Max time of 0.108607 on 8 procs for 5 steps with 80952 atoms
+delete_atoms region freeboard compress no 
+Deleted 0 atoms, new total = 80952
+set region raceways property/atom Temp ${Tinlet}
+set region raceways property/atom Temp 1823.15
+  2 settings made for property/atom
+run 5 pre no post no
+Step Time Atoms KinEng totalFor avForceP nDelRun 
+  107011        0.001    80952    0.6461879   -6145.8939  -0.66320204    20.973444 
+  107016       0.0015    80952    3.1189791   -6145.8939  -0.66313048    20.973937 
+Loop time of 0.0933312 on 8 procs for 5 steps with 80952 atoms
+Max time of 0.0933332 on 8 procs for 5 steps with 80952 atoms
+delete_atoms region freeboard compress no 
+Deleted 0 atoms, new total = 80952
+set region raceways property/atom Temp ${Tinlet}
+set region raceways property/atom Temp 1823.15
+  2 settings made for property/atom
+run 5 pre no post no
+Step Time Atoms KinEng totalFor avForceP nDelRun 
+  107016       0.0015    80952    3.1189791   -6145.8939  -0.66313048    20.973937 
+  107020       0.0019    80952    9.8517058   -6145.8939  -0.66305894    20.974687 
+  107021        0.002    80952    10.894707   -6145.8939  -0.66320204    20.974875 
+Loop time of 0.133338 on 8 procs for 5 steps with 80952 atoms
+Max time of 0.133338 on 8 procs for 5 steps with 80952 atoms
+delete_atoms region freeboard compress no 
+Deleted 0 atoms, new total = 80952
+set region raceways property/atom Temp ${Tinlet}
+set region raceways property/atom Temp 1823.15
+  2 settings made for property/atom
+run 5 pre no post no
+Step Time Atoms KinEng totalFor avForceP nDelRun 
+  107021        0.002    80952    10.894707   -6145.8939  -0.66320204    20.974875 
+  107026       0.0025    80952    1108.5274   -6145.8939  -0.66327361    20.972953 
+Loop time of 0.151704 on 8 procs for 5 steps with 80952 atoms
+Max time of 0.151704 on 8 procs for 5 steps with 80952 atoms
+delete_atoms region freeboard compress no 
+Deleted 0 atoms, new total = 80952
+set region raceways property/atom Temp ${Tinlet}
+set region raceways property/atom Temp 1823.15
+  3 settings made for property/atom
+run 5 pre no post no
+Step Time Atoms KinEng totalFor avForceP nDelRun 
+  107026       0.0025    80952    1108.5274   -6145.8939  -0.66327361    20.972953 
+  107030       0.0029    80914    731050.14   -6145.8939   -0.6634168    20.973496 
+  107031        0.003    80895    902771.96   -6145.8939  -0.66305894    20.973632 
+Loop time of 0.188899 on 8 procs for 5 steps with 80895 atoms
+Max time of 0.188957 on 8 procs for 5 steps with 80895 atoms
+delete_atoms region freeboard compress no 
+Deleted 0 atoms, new total = 80895
+set region raceways property/atom Temp ${Tinlet}
+set region raceways property/atom Temp 1823.15
+  3 settings made for property/atom
+run 5 pre no post no
+Step Time Atoms KinEng totalFor avForceP nDelRun 
+  107031        0.003    80895    902771.96   -6145.8939  -0.66305894    20.973632 
+  107036       0.0035    78592     10717618   -6145.8939  -0.66327361    20.974511 
+Loop time of 0.167549 on 8 procs for 5 steps with 78592 atoms
+Max time of 0.167549 on 8 procs for 5 steps with 78592 atoms
