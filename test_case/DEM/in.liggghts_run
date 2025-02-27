@@ -1,0 +1,80 @@
+echo            both
+log             ../log/log.liggghts
+thermo_log      ../log/thermo.txt
+
+#######################################################
+# variables                                           #
+#######################################################
+# variable r0 equal 0.011
+#######################################################
+
+# read packed bed and calc convective heat transfer
+atom_style      granular
+atom_modify     map array
+boundary        f f f
+newton          off
+
+communicate     single vel yes
+
+units           si
+processors      2 2 2
+
+# read the restart file
+read_restart    ../DEM/post/restart/liggghts.restartSequence
+
+neighbor        0.002 bin
+neigh_modify    delay 0 
+
+
+# Material properties required for granular pair styles
+
+include         ../DEM/in.contact_settings
+
+# timestep, gravity
+timestep    1e-4
+fix         gravi all gravity 9.81 vector 0. 0. -1.
+
+# walls
+fix     xwalls1 all wall/gran model hertz tangential history primitive type 1 xplane 0.0
+fix     xwalls2 all wall/gran model hertz tangential history primitive type 1 xplane 0.5
+fix     ywalls1 all wall/gran model hertz tangential history primitive type 1 yplane -0.1
+fix     ywalls2 all wall/gran model hertz tangential history primitive type 1 yplane 0.1
+fix     zwalls1 all wall/gran model hertz tangential history primitive type 1 zplane -0.1
+fix     zwalls2 all wall/gran model hertz tangential history primitive type 1 zplane 0.1
+
+# cfd coupling
+fix         cfd all couple/cfd couple_every 100 mpi
+fix         cfd2 all couple/cfd/force/implicit
+
+
+# heat transfer
+fix             m7 all property/global thermalConductivity peratomtype 5000 # lambda in [W/(K*m)]
+fix             m8 all property/global thermalCapacity     peratomtype 870   # cp in [J/(kg*K)]
+fix             heattransfer all heat/gran/conduction initial_temperature 300
+fix             cfd3 all couple/cfd/convection T0 300
+
+# mass transfer
+fix             cfd4 all couple/cfd/dissolve rmin 0.001
+
+# set particle temperature for the bed
+# run         0
+# region      total block INF INF INF INF INF INF units box
+# set         region total property/atom Temp 600.
+
+# particle distribution
+include         ../DEM/in.particleSizeDistribution1
+
+# insert in insertion volume
+region      bc block 0.0 0.5 -0.1 0.1 -0.1 0.1 units box
+fix             ins1 all insert/pack seed 32452843 distributiontemplate pdd1 all_in yes insert_every 100 overlapcheck yes region bc volumefraction_region 0.8
+
+# apply nve integration to all particles that are inserted as single particles
+fix         integr all nve/sphere
+
+# output settings, include total thermal energy
+thermo_style    custom step time atoms ke #v_totalForce v_avForcePerPart v_nDelRun
+thermo          10
+
+dump            dmp all custom 5000 ../DEM/post/dump*.liggghts_run id type x y z ix iy iz vx vy vz fx fy fz omegax omegay omegaz radius density f_Temp[0] f_convectiveHeatFlux[0] f_convectiveMassFlux[0]
+
+run         0

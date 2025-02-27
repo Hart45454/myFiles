@@ -1,0 +1,25 @@
+Name	avgdeltaT	maxdeltaT	nOfRuns	level	parentNr	parentName
+Global	3.129530e+03	3.130352e+03	119999	0	0	
+Coupling	2.177829e+03	2.177986e+03	119999	1	1	Global
+LIGGGHTS	2.280423e+02	2.281661e+02	119999	2	2	Coupling
+LIGGGHTS_reallocArrays	5.075845e+00	5.131517e+00	119999	2	2	Coupling
+resetVolFields	2.337391e+00	2.427441e+00	119999	2	2	Coupling
+getDEMdata	5.129361e+01	5.218203e+01	119999	2	2	Coupling
+findCell	4.347050e+01	4.636508e+01	119999	2	2	Coupling
+setvoidFraction	1.749684e+02	1.814597e+02	119999	2	2	Coupling
+setAverages	1.769377e+02	1.911387e+02	119999	2	2	Coupling
+setForce	9.666425e+02	9.670161e+02	119999	2	2	Coupling
+setParticleForceField	3.479380e+01	3.521116e+01	119999	2	2	Coupling
+giveDEMdata	4.071528e+01	4.123347e+01	119999	2	2	Coupling
+interpolateEulerFields	1.462455e+01	1.515184e+01	119999	2	2	Coupling
+dumpDEMdata	2.864328e-01	3.025830e-01	119999	2	2	Coupling
+Flow	9.512171e+02	9.519749e+02	119999	1	1	Global
+calcEnergyContributions	2.486553e+02	2.492351e+02	119999	2	2	Coupling
+speciesExecute	1.187628e-01	1.385290e-01	119999	2	2	Coupling
+BeetstraDrag	8.824087e+01	1.045331e+02	119999	3	10	setForce
+postFlow	1.973840e+02	1.979388e+02	239998	2	15	Flow
+virtualMassForce	2.329856e+02	2.337276e+02	119999	3	10	setForce
+calcMassContributions	4.288237e+02	4.334400e+02	239998	2	2	Coupling
+viscForce	8.181375e+01	1.003238e+02	119999	3	10	setForce
+gradPForceSmooth	4.082298e+01	4.120893e+01	119999	3	10	setForce
+surfaceTensionForce	1.568752e+01	1.599138e+01	119999	3	10	setForce

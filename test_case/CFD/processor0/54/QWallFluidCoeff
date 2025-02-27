@@ -1,0 +1,203 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  4.x                                   |
+|   \\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    location    "54";
+    object      QWallFluidCoeff;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [1 -1 -3 -1 0 0 0];
+
+internalField   nonuniform List<scalar> 
+132
+(
+-5.7007e+06
+-3.21397e+06
+-6.16605e+06
+-4.04999e+06
+-6.57928e+06
+-4.63952e+06
+-6.91336e+06
+-5.07256e+06
+-7.27165e+06
+-2.85908e+06
+-1.53931e+06
+-3.02567e+06
+-1.86167e+06
+-3.19339e+06
+-2.10161e+06
+-3.32928e+06
+-2.27966e+06
+-3.45813e+06
+0
+-1.48675e+06
+-2.98803e+06
+-1.74748e+06
+-3.09774e+06
+-1.93243e+06
+-3.19593e+06
+-2.0363e+06
+-3.23645e+06
+-2.86337e+06
+-1.50057e+06
+-2.99634e+06
+-2.8272e+06
+-1.42676e+06
+-2.90751e+06
+-1.59752e+06
+-2.98934e+06
+-1.72582e+06
+-3.06558e+06
+-1.80628e+06
+-3.13186e+06
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+-2.78343e+06
+-1.39337e+06
+-2.83984e+06
+-1.51777e+06
+-2.91073e+06
+-1.62738e+06
+-2.98306e+06
+-1.69396e+06
+-3.06402e+06
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+-2.77919e+06
+-1.37677e+06
+-2.81861e+06
+-1.46116e+06
+-2.85022e+06
+-1.48807e+06
+-2.87114e+06
+-1.45771e+06
+-2.86763e+06
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+)
+;
+
+boundaryField
+{
+    inlet
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    outlet
+    {
+        type            calculated;
+        value           nonuniform 0();
+    }
+    wall
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    procBoundary0to1
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary0to2
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary0to4
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary0to6
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary0to7
+    {
+        type            processor;
+        value           uniform 0;
+    }
+}
+
+
+// ************************************************************************* //

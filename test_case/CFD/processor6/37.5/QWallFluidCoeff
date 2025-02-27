@@ -1,0 +1,153 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  4.x                                   |
+|   \\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    location    "37.5";
+    object      QWallFluidCoeff;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [1 -1 -3 -1 0 0 0];
+
+internalField   nonuniform List<scalar> 
+87
+(
+0
+0
+0
+-2.89414e+06
+-1.58838e+06
+-2.94134e+06
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+-2.75477e+06
+-1.36971e+06
+-2.77078e+06
+-1.40939e+06
+-2.76509e+06
+-1.38308e+06
+-2.77529e+06
+-1.35533e+06
+-2.77806e+06
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+-2.74972e+06
+-1.43531e+06
+-2.80406e+06
+-1.53785e+06
+-2.83057e+06
+-1.59525e+06
+-2.86732e+06
+-1.6227e+06
+-2.90103e+06
+-2.72011e+06
+-1.36555e+06
+-2.72577e+06
+-1.35795e+06
+-2.72766e+06
+-1.34012e+06
+-2.73001e+06
+-1.27818e+06
+-2.76476e+06
+-2.7348e+06
+-1.43946e+06
+-2.77883e+06
+-1.52847e+06
+-2.80926e+06
+-1.57836e+06
+-2.84476e+06
+-1.59052e+06
+-2.8722e+06
+-5.51959e+06
+-3.03716e+06
+-5.70233e+06
+-3.42646e+06
+-5.89351e+06
+-3.70151e+06
+-6.03457e+06
+-3.87561e+06
+-6.10303e+06
+)
+;
+
+boundaryField
+{
+    inlet
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    outlet
+    {
+        type            calculated;
+        value           nonuniform 0();
+    }
+    wall
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    procBoundary6to0
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary6to2
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary6to4
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary6to7
+    {
+        type            processor;
+        value           uniform 0;
+    }
+}
+
+
+// ************************************************************************* //
